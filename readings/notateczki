@@ -1,0 +1,107 @@
+1. Lecimy do pierwszego zera, zapisujac w tablicy [0.255] wszystkie, ktore wystapily. jesli wystaplity kilka razy to od razu fail
+Jeśli ciąg jest pusty to tez fail
+
+2. Jeśli udało się bez faila to mamy tablicę (być może pustą), która należy sprawdzić
+Robimy własiciwe to samo co na początku, ale mamy silniejdze warunki - fail jest wtedy, gdy element się powtórzył LUB nie ma go w tej oryginalnej tablicy
+
+Jeśli Przejdziemy drugi krok bez faila to zwracamy zero
+
+
+Uwagi
+Każdy
+bajt pliku interpretujemy jako 8-bitową liczbę bez znaku reprezentującą jeden
+element ciągu.
+
+
+Program niczego nie wypisuje. Program zwraca wartość (ang. exit code) 0, jeśli
+wczytany ciąg jest poprawny, a 1 w przeciwnym przypadku. Ponadto program zwraca
+1, gdy podano złą liczbę argumentów lub podany argument jest niepoprawny.
+
+
+Kompilacja
+
+nasm -f elf64 -o sequence.o sequence.asm
+ld --fatal-warnings -o sequence sequence.o
+
+
+.text, .data i .rodata
+
+
+
+
+Przeczytać laby całe
+zrobić zadanka
+zebrać uwagi
+
+
+Ogarnąć:
+- jak podzielić na funkcje | DONE, po dwukropku
+- jak zrobic tablice       | Done, przez te deklaracje (doczytac)
+- jak wczytywać pliki      | done, syscalle, doczytac
+- stos
+
+poczytaj o assemly sections
+https://www.tutorialspoint.com/assembly_programming/assembly_basic_syntax.htm
+
+napisz wywolanie funkcji w c i assembly
+
+
+
+dziwna konwencja na 64 bitach
+
+Argumenty funkcji przekazuje się w rejestrach rdi, rsi, rdx, rcx, r8 i r9. Jeśli jest ich więcej, to kolejne umieszcza się na stosie, a stos czyści funkcja wołająca. Jeśli funkcja zmieni wartość któregoś z rejestrów rbx, rsp, rbp i r12 do r15, musi przywrócić jego wartość, jaka była przy wchodzeniu do funkcji (tuż po wywołaniu instrukcji call). Wartość funkcji znajdzie się zwykle w rejestrze rax lub w parze rejestrów rax i rdx. Przy wchodzeniu do funkcji wartość wskaźnika stosu musi być podzielna przez 16. 
+
+
+
+foo:
+  call   bar1
+foo_loop:
+  call   bar2
+  test   rax, rax
+  js     foo_exit
+  jmp    foo_loop
+foo_exit:
+  ret
+
+
+sekcja .text - kod wykonywalny
+zmienne globalne - .data
+zmienne globalne inicjowane zerami - .bss
+zmienne globalne tylko do odczytu - .rodata
+
+
+
+
+    DB - Define Byte. 8 bits
+    DW - Define Word. Generally 2 bytes on a typical x86 32-bit system
+    DD - Define double word. Generally 4 bytes on a typical x86 32-bit system
+
+
+The pop instruction removes the 4-byte data element from the top of the hardware-supported stack into the specified operand (i.e. register or memory location). It first moves the 4 bytes located at memory location [SP] into the specified register or memory location, and then increments SP by 4.
+
+
+
+gdb
+si zeby robic kroczek
+i r rsi to print
+
+layout asm
+
+
+
+
+
+------------Zadanie2------------------
+ void proberen(int32_t *semaphore, int32_t value);
+ void verhogen(int32_t *semaphore, int32_t value);
+ uint64_t proberen_time(int32_t *semaphore, int32_t value);
+ 
+ Parametr semaphore jest adresem zmiennej przechowującej wartość semafora.
+ Parametr value jest liczbą całkowitą z przedziału od 1 do 2^31 - 1.
+
+czekanie - zakaz xchg i lock w proberen
+
+uzyj lock add w verhogen
+
+napisac zewnetrzna funkcje uint64_t get_os_time(void);
+

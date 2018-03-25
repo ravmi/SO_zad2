@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <title>Systemy operacyjne, laboratorium 3, asembler</title>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+</head>
+<body>
+<div class="container">
+
+<p>Celem dzisiejszych zajęć jest poznanie, jak można zrealizować synchronizację
+wątków na poziomie kodu maszynowego w przestrzeni użytkownika i bez odwoływania
+się do systemu operacyjnego. Jest to przydatne, gdy każdy wątek ma do dyspozycji
+własny fizyczny lub wirtualny (np. gdy mamy włączony <i>Hyper Threading</i>)
+rdzeń obliczeniowy.</p>
+
+<h1>1. Współbieżny dostęp do zmiennej globalnej</h1>
+
+<p>Zobaczmy przykład napisanej w asemblerze funkcji, która zwiększa wartość
+globalnej zmiennej zadaną liczbę razy. Funkcję <code>inc_thread</code> będziemy
+wołać z języka C. Jej sygnatura wygląda następująco:</p>
+<pre>
+void *inc_thread(void *);
+</pre>
+<p>Funkcja ta dostaje wskaźnik, za pomocą którego będziemy jej przekazywali
+wskaźnik do struktury typu <code>thread_data_t</code> mającej dwie składowe:
+<code>value</code> jest adresem zmiennej globalnej, a <code>count</code> –
+liczbą inkrementacji, które funkcja ma wykonać na tej zmiennej.</p>
+<pre>
+typedef struct {
+  int *value;
+  int count;
+} thread_data_t;
+</pre>
+<p>Moglibyśmy rozważaną funkcję zaimplementować w C, ale wtedy kompilator
+wyoptymalizowałby odczyty zmiennej globalnej albo wręcz całą pętlę.
+Implementacja w asemblerze wygląda następująco:</p>
+<pre>
+global inc_thread
+
+section .text
+
+align 8
+inc_thread:
+  mov     rsi, [rdi]      ; value
+  mov     ecx, [rdi + 8]  ; count
+  jmp     count_test
+count_loop:
+  inc     dword [rsi]     ; ++*value
+count_test:
+  sub     ecx, 1          ; --count
+  jge     count_loop      ; skok, gdy count >= 0
+  xor     eax, eax        ; return NULL
+  ret
+</pre>
+<p>Cały kod źródłowy znajduje się w plikach <code>inc_thread.h</code> i
+<code>inc_thread_naive.asm</code>. W pliku <code>inc_thread_test.c</code> znajduje
+się program inicjujący zmienną globalną na zero, uruchamiający funkcję
+<code>inc_thread</code> w wielu wątkach i po ich zakończeniu wypisujący końcową
+wartość zmiennej globalnej. Dostarczony <code>makefile</code> generuje plik
+wykonywalny <code>inc_thread_test_naive</code>, który oczekuje dwóch parametrów:
+liczby wątków do uruchomienia, liczby inkrementacji do wykonania. Przykładowe
+uruchomienie tego programu</p>
+<pre>
+./inc_thread_test_naive 3 10000000
+</pre>
+<p>wypisuje wartość mniejszą niż iloczyn liczby wątków i liczby inkrementacji w
+każdym z nich. Instrukcja <code>inc dword [rsi]</code> nie jest atomowa!
+Instrukcja <code>add dword [rsi], 1</code> też. Wątki ścigają się o dostęp do
+globalnej zmiennej.</p>
+
+<h2>1.1. Niepodzielne wykonywanie instrukcji maszynowej</h2>
+
+<p>Aby instrukcja procesora x86 wykonywała się niepodzielnie, należy ją
+poprzedzić prefiksem <code>lock</code>. Opis jego działania znajdujemy w
+dokumentacji<sup><a href="#bib03">[3]</a></sup>:
+<i>Causes the processor’s LOCK# signal to be asserted during execution of the
+accompanying instruction (turns the instruction into an atomic instruction). In
+a multiprocessor environment, the LOCK# signal ensures that the processor has
+exclusive use of any shared memory while the signal is asserted. (…)
+The LOCK prefix can be prepended only to the following instructions and only
+to those forms of the instructions where the destination operand is a memory
+operand: ADD, ADC, AND, BTC, BTR, BTS, CMPXCHG, CMPXCH8B, CMPXCHG16B, DEC, INC,
+NEG, NOT, OR, SBB, SUB, XOR, XADD, and XCHG. If the LOCK prefix is used with one
+of these instructions and the source operand is a memory operand, an undefined
+opcode exception (#UD) may be generated. An undefined opcode exception will also
+be generated if the LOCK prefix is used with any instruction not in the above
+list. The XCHG instruction always asserts the LOCK# signal regardless of the
+presence or absence of the LOCK prefix.
+The LOCK prefix is typically used with the BTS instruction to perform a
+read-modify-write operation on a memory location in shared memory
+environment.
+The integrity of the LOCK prefix is not affected by the alignment of the memory
+field. Memory locking is observed for arbitrarily misaligned fields.
+This instruction’s operation is the same in non-64-bit modes and 64-bit
+mode.</i></p>
+
+<p>I jeszcze uwaga techniczna:
+<i>In most IA-32 and all Intel 64 processors, locking may occur without the
+LOCK# signal being asserted. (…)
+Beginning with the P6 family processors, when the LOCK prefix is prefixed to an
+instruction and the memory area being accessed is cached internally in the
+processor, the LOCK# signal is generally not asserted. Instead, only the
+processor’s cache is locked. Here, the processor’s cache coherency mechanism
+ensures that the operation is carried out atomically with regards to
+memory.</i></p>
+
+<div class="alert alert-info">
+<h4>W skrócie</h4>
+Instrukcja <code>xchg</code> jest niepodzielna.
+Instrukcje
+<code>add</code>, <code>adc</code>, <code>and</code>, <code>btc</code>,
+<code>btr</code>, <code>bts</code>, <code>cmpxchg</code>, <code>cmpxchg8</code>,
+<code>cmpxchg16b</code>, <code>dec</code>, <code>inc</code>, <code>neg</code>,
+<code>not</code>, <code>or</code>, <code>sbb</code>, <code>sub</code>,
+<code>xor</code> i <code>xadd</code> nie są atomowe, jeśli modyfikują zawartość
+pamięci, ale można ich wykonanie uczynić atomowomym, poprzedzając je prefiksem
+<code>lock</code>.
+Instrukcje, które wykonują co najwyżej jedno odwołanie do pamięci, są
+niepodzielne.
+W szczegolności atomowymi operacjami są odczyt z pamięci i zapis do pamięci za
+pomocą instrukcji <code>mov</code>, jeśli adres argumentu jest wyrównany do
+rozmiaru tego argumentu.
+</div>
+
+<div class="panel panel-default">
+<div class="panel-heading">
+<h4 class="panel-title">Zadanie C1</h4>
+</div>
+<div class="panel-body">
+<p>Użyj prefiksu <code>lock</code>, aby zapewnić niepodzielne zwiększanie
+zmiennej globalnej w funkcji <code>inc_thread</code>.</p>
+</div>
+</div>
+
+<h2>1.2. Sekcja krytyczna realizowana za pomocą operacji zamień</h2>
+
+<p>Żeby zapewnić niepodzielne wykonanie większego fragmentu kodu niż jedna
+instrukcja maszynowa, można umieścić ten kod w sekcji krytycznej, np.
+implementując wirującą blokadę (ang. <i>spinlock</i>). Przydaje się do tego
+instrukcja <code>xchg</code><sup><a href="#bib03">[3]</a></sup>:
+<i>Exchanges the contents of the destination (first) and source (second)
+operands. The operands can be two genera-purpose registers or a register and a
+memory location. If a memory operand is referenced, the processor’s locking
+protocol is automatically implemented for the duration of the exchange
+operation, regardless of the presence or absence of the LOCK prefix (…).</i>
+Instrukcja <code>xchg dst, src</code> wykonuje operację:</p>
+<pre>
+tmp ← dst
+dst ← src
+src ← tmp
+</pre>
+<p>Instrukcja <code>xchg</code> nie modyfikuje znaczników stanu.</p>
+
+<p>W poniższym przykładzie zamieniana jest wartość rejestru <code>eax</code> z
+32-bitowym słowem w pamięci o adresie wskazywanym przez rejestr
+<code>rdx</code>:</p>
+<pre>
+xchg [rdx], eax
+</pre>
+
+<div class="panel panel-default">
+<div class="panel-heading">
+<h4 class="panel-title">Zadanie C2</h4>
+</div>
+<div class="panel-body">
+<p>Zapewnij niepodzielne zwiększanie zmiennej globalnej w funkcji
+<code>inc_thread</code>, umieszczając tę operację w sekcji krytycznej
+zaimplementowanej jako wirująca blokada. Użyj instrukcji <code>xchg</code>.
+Przykład realizacji był pokazany na wykładzie z PW.</p>
+
+<p><b>Wskazówka:</b> zmienne globalne inicjowane przed rozpoczęciem wykonywania
+programu umieszcza się w sekcji <code>.data</code>; jeśli zmienna globalna ma
+być zainicjowana zerem, można ją umieścić w sekcji <code>.bss</code>.</p>
+</div>
+</div>
+
+<h2>1.3. Sekcja krytyczna realizowana za pomocą operacji porównaj-i-zamień</h2>
+
+<p>Począwszy od procesora 486, wprowadzono instrukcję
+<code>cmpxchg</code><sup><a href="#bib03">[3]</a></sup>:
+<i>Compares the value in the AL, AX, EAX, or RAX register with the first operand
+(destination operand). If the two values are equal, the second operand (source
+operand) is loaded into the destination operand. Otherwise, the destination
+operand is loaded into the AL, AX, EAX or RAX register. (…)
+This instruction can be used with a LOCK prefix to allow the instruction to be
+executed atomically. To simplify the interface to the processor’s bus, the
+destination operand receives a write cycle without regard to the result of the
+comparison. The destination operand is written back if the comparison fails;
+otherwise, the source operand is written into the destination. (The processor
+never produces a locked read without also producing a locked write.)</i>
+Instrukcja <code>cmpxchg dst, src</code> wykonuje operację:</p>
+<pre>
+tmp ← dst
+IF accumulator = tmp
+THEN
+  ZF ← 1
+  dst ← src
+ELSE
+  ZF ← 0
+  accumulator ← tmp
+  dst ← tmp
+FI
+</pre>
+<p>Instrukcja <code>cmpxchg</code> modyfikuje znaczniki stanu stosownie do
+wyniku porównania, w szczególności ustawia znacznik <code>ZF</code>, jeśli
+porównywane wartości są równe, a w przeciwnym przypadku zeruje go.</p>
+
+<p>W poniższym przykładzie akumulatorem jest rejestr <code>eax</code>, pierwszym
+argumentem (<code>dst</code>) jest 32-bitowe słowo w pamięci o adresie
+wskazywanym przez rejestr <code>rdx</code>, a drugim argumentem
+(<code>src</code>) jest rejestr <code>edi</code>:</p>
+<pre>
+cmpxchg [rdx], edi
+</pre>
+
+<div class="panel panel-default">
+<div class="panel-heading">
+<h4 class="panel-title">Zadanie C3</h4>
+</div>
+<div class="panel-body">
+<p>Zapewnij niepodzielne zwiększanie zmiennej globalnej w funkcji
+<code>inc_thread</code>, umieszczając tę operację w sekcji krytycznej
+zaimplementowanej jako wirująca blokada. Użyj instrukcji
+<code>cmpxchg</code>.</p>
+</div>
+</div>
+
+<h2>1.4. Sekcja krytyczna realizowana za pomocą operacji testuj-i-ustaw</h2>
+
+<p>Do zaimplementowania blokady można też użyć instrukcji <code>bts</code> i
+<code>btr</code>.</p>
+
+<p>Instrukcja <code>bts</code><sup><a href="#bib03">[3]</a></sup>:
+<i>Selects the bit in a bit string (specified with the first operand, called the
+bit base) at the bit-position designated by the bit offset operand (second
+operand), stores the value of the bit in the CF flag, and sets the selected bit
+in the bit string to 1. The bit base operand can be a register or a memory
+location; the bit offset operand can be a register or an immediate value.
+If the bit base operand specifies a register, the instruction takes the modulo
+16, 32, or 64 of the bit offset operand (modulo size depends on the mode and
+register size) (…).
+If the bit base operand specifies a memory location, the operand represents the
+address of the byte in memory that contains the bit base (bit 0 of the specified
+byte) of the bit string. The range of the bit position that can be referenced by
+the offset operand depends on the operand size. (…)
+This instruction can be used with a LOCK prefix to allow the instruction to be
+executed atomically. (…)
+The CF flag contains the value of the selected bit before it is set. The ZF flag
+is unaffected. The OF, SF, AF, and PF flags are undefined.</i>
+Pseudokod instrukcji <code>bts</code>:
+<pre>
+CF ← Bit(BitBase, BitOffset)
+Bit(BitBase, BitOffset) ← 1
+</pre>
+<p><i>Bit(BitBase, BitOffset) — Returns the value of a bit within a bit string. The
+bit string is a sequence of bits in memory or a register. Bits are numbered from
+low-order to high-order within registers and within memory bytes. If the BitBase
+is a register, the BitOffset can be in the range 0 to [15, 31, 63] depending on
+the mode and register size.</i></p>
+
+<p>W poniższym przykładzie instrukcja <code>bts</code> ustawia w pamięci
+najmłodszy bit słowa o adresie wskazywanym przez rejestr <code>rdx</code>:</p>
+<pre>
+xor eax, eax
+bts [rdx], eax
+</pre>
+
+<p>Podobnie działa instrukcja
+<code>btr</code><sup><a href="#bib03">[3]</a></sup>:
+<i>Selects the bit in a bit string (specified with the first operand, called the
+bit base) at the bit-position designated by the bit offset operand (second
+operand), stores the value of the bit in the CF flag, and clears the selected
+bit in the bit string to 0. The bit base operand can be a register or a memory
+location; the bit offset operand can be a register or an immediate value (…).
+This instruction can be used with a LOCK prefix to allow the instruction to be
+executed atomically. (…)
+The CF flag contains the value of the selected bit before it is cleared. The ZF
+flag is unaffected. The OF, SF, AF, and PF flags are undefined.</i>
+Pseudokod instrukcji <code>btr</code>:</p>
+<pre>
+CF ← Bit(BitBase, BitOffset)
+Bit(BitBase, BitOffset) ← 0
+</pre>
+
+<div class="panel panel-default">
+<div class="panel-heading">
+<h4 class="panel-title">Zadanie C4</h4>
+</div>
+<div class="panel-body">
+<p>Zapewnij niepodzielne zwiększanie zmiennej globalnej w funkcji
+<code>inc_thread</code>, umieszczając tę operację w sekcji krytycznej
+zaimplementowanej jako wirująca blokada. Użyj instrukcji
+<code>bts</code> i <code>btr</code>.</p>
+</div>
+</div>
+
+<h2>1.5. Sekcja krytyczna realizowana za pomocą systemowego muteksa</h2>
+
+<div class="panel panel-default">
+<div class="panel-heading">
+<h4 class="panel-title">Zadanie C5</h4>
+</div>
+<div class="panel-body">
+<p>Dla porównania zaimplementuj funkcję <code>inc_thread</code> w C, realizując
+sekcję krytyczną za pomocą muteksa dostarczanego przez bibliotekę
+<code>pthread</code>. Porównaj czasy działania wszystkich programów, które
+pojawiły się na dzisiejszych zajęciach. Spróbuj wyciągnąć jakieś wnioski.</p>
+</div>
+</div>
+
+<h1>2. Semafor</h1>
+
+<p>Do zaimplementowania ogólnego semafora przydatna jest instrukcja
+<code>xadd</code><sup><a href="#bib03">[3]</a></sup>:
+<i>Exchanges the first operand (destination operand) with the second operand
+(source operand), then loads the sum of the two values into the destination
+operand. The destination operand can be a register or a memory location; the
+source operand is a register. (…)
+This instruction can be used with a LOCK prefix to allow the instruction to be
+executed atomically. (…)
+The CF, PF, AF, SF, ZF, and OF flags are set according to the result of the
+addition, which is stored in the destination operand.</i>
+Instrukcja <code>xadd dst, src</code> wykonuje operację:</p>
+<pre>
+tmp ← src + dst
+src ← dst
+dst ← tmp
+</pre>
+
+<h1>3. Do poczytania</h1>
+
+<p>Czującym niedosyt asemblera proponujemy poczytanie:
+<ol>
+<li id="bib01"><a href="https://software.intel.com/sites/default/files/m/d/4/1/d/8/Introduction_to_x64_Assembly.pdf">Wprowadzenie do asemblera x86</a></li>
+<li id="bib02"><a href="https://software.intel.com/sites/default/files/managed/39/c5/325462-sdm-vol-1-2abcd-3abcd.pdf">Podręcznik programisty x86</a></li>
+<li id="bib03"><a href="http://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-instruction-set-reference-manual-325383.pdf">Lista referencyjna instrukcji architektury x86</a></li>
+<li id="bib04"><a href="http://developer.amd.com/resources/developer-guides-manuals">Podręczniki, manuale i inne dokumenty do x86</a></li>
+</ol>
+
+</div>
+</body>
+</html>

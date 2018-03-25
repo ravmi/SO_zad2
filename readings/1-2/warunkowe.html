@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <title>Instrukcje warunkowe</title>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+</head>
+<body>
+<div class="container">
+
+<h3>Znaczniki znajdujące się w rejestrze RFLAGS i modyfikowane w instrukcjach
+arytmetyczno-logicznych oraz testowane w instrukcjach warunkowych</h3>
+
+<table border="1" width="100%">
+<tr>
+<td width="10%">Znacznik</td>
+<td width="20%">Nazwa angielska</td>
+<td>Ustawiany na 1, gdy…,
+a zerowany w przeciwnym przypadku.</td>
+<tr><td>CF</td><td>Carry Flag</td>
+<td>wystąpiło przeniesienie lub pożyczka z najbardziej znaczącego bitu wyniku
+(nadmiar w operacjach na liczbach bez znaku)</td></tr>
+<tr><td>PF</td><td>Parity Flag</td>
+<td>najmłodsze 8 bitów wyniku zawiera parzystą liczbę jedynek</td></tr>
+<tr><td>AF</td><td>Adjust Flag</td>
+<td>wystąpiło przeniesienie lub pożyczka z najmłodszych 4 bitów rejestru AL
+(używany w arytmetyce dziesiętnej)</td></tr>
+<tr><td>ZF</td><td>Zero Flag</td>
+<td>wynik jest równy zeru</td></tr>
+<tr><td>SF</td><td>Sign Flag</td>
+<td>najbardziej znaczący bit wyniku (bit znaku dla liczb w kodzie uzupełnień do 2)
+jest równy 1</td></tr>
+<tr><td>OF</td><td>Overflow Flag</td>
+<td>wynik jest zbyt duży lub zbyt mały, aby mógł być zapisany w kodzie uzupełnień do 2
+(nadmiar w operacjach na liczbach ze znakiem)</td></tr>
+</table>
+&nbsp;
+
+<h3>Ważniejsze instrukcje modyfikujące znaczniki</h3>
+
+<table border="1" width="100%">
+<tr>
+<td>Instrukcja</td>
+<td width="10%" style = "text-align: center;">OF</td>
+<td width="10%" style = "text-align: center;">SF</td>
+<td width="10%" style = "text-align: center;">ZF</td>
+<td width="10%" style = "text-align: center;">AF</td>
+<td width="10%" style = "text-align: center;">PF</td>
+<td width="10%" style = "text-align: center;">CF</td>
+</tr>
+<tr>
+<td>ADC<br>SBB</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">TM</td>
+</tr>
+<tr>
+<td>ADD<br>SUB<br>CMP<br>CMPS<br>SCAS<br>NEG</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+</tr>
+<tr>
+<td>DEC<br>INC</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;"></td>
+</tr>
+<tr>
+<td>MUL<br>IMUL</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">M</td>
+</tr>
+<tr>
+<td>DIV<br>IDIV</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">–</td>
+</tr>
+<tr>
+<td>RCL 1<br>RCR 1</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;">TM</td>
+</tr>
+<tr>
+<td>RCL count<br>RCR count</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;">TM</td>
+</tr>
+<tr>
+<td>ROL 1<br>ROR 1</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;">M</td>
+</tr>
+<tr>
+<td>ROL count<br>ROR count</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;">M</td>
+</tr>
+<tr>
+<td>SAL 1<br>SAR 1<br>SHL 1<br>SHR 1</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+</tr>
+<tr>
+<td>SAL count<br>SAR count<br>SHL count<br>SHR count</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+</tr>
+<tr>
+<td>SHLD<br>SHRD</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+</tr>
+<tr>
+<td>BSF<br>BSR</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">–</td>
+</tr>
+<tr>
+<td>BT<br>BTS<br>BTR<br>BTC</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">M</td>
+</tr>
+<tr>
+<td>AND<br>OR<br>TEST<br>XOR</td>
+<td style = "text-align: center;">0</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">–</td>
+<td style = "text-align: center;">M</td>
+<td style = "text-align: center;">0</td>
+</tr>
+<tr>
+<td>NOT</td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+</tr>
+<tr>
+<td>CLC</td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;">0</td>
+</tr>
+<tr>
+<td>CMC</td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;">M</td>
+</tr>
+<tr>
+<td>STC</td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;"></td>
+<td style = "text-align: center;">1</td>
+</tr>
+</table>
+&nbsp;
+
+<table border="1" width="100%">
+<tr>
+<td width="10%" style = "text-align: center;">T</td>
+<td>instrukcja testuje znacznik</td>
+</tr>
+<tr>
+<td width="10%" style = "text-align: center;">M</td>
+<td>instrukcja modyfikuje znacznik</td>
+</tr>
+<tr>
+<td width="10%" style = "text-align: center;">0</td>
+<td>instrukcja zeruje znacznik</td>
+</tr>
+<tr>
+<td width="10%" style = "text-align: center;">1</td>
+<td>instrukcja ustawia znacznik na 1</td>
+</tr>
+<tr>
+<td width="10%" style = "text-align: center;">–</td>
+<td>po wykonaniu instrukcji wartość znacznika jest niezdefiniowana</td>
+<tr>
+<td width="10%" style = "text-align: center;"></td>
+<td>instrukcja nie zmienia wartości znacznika</td>
+</tr>
+</table>
+&nbsp;
+
+<h3>Skoki warunkowe</h3>
+
+<table border="1" width="100%">
+<tr>
+<td width="10%">Instrukcja</td>
+<td width="30%">Sprawdzany warunek</td>
+<td>Skok, gdy…</td>
+</tr>
+<tr>
+<td>JO</td>
+<td>OF = 1</td>
+<td>wystąpił nadmiar</td>
+</tr>
+<tr>
+<td>JNO</td>
+<td>OF = 0</td>
+<td>nie wystąpił nadmiar</td>
+</tr>
+<tr>
+<td>JB<br>JNAE<br>JC</td>
+<td>CF = 1</td>
+<td>mniejsze (liczby bez znaku)<br>nie mniejsze i nie równe (liczby bez znaku)<br>
+wystąpiło przeniesienie</td>
+</tr>
+<tr>
+<td>JNB<br>JAE<br>JNC</td>
+<td>CF = 0</td>
+<td>nie mniejsze (liczby bez znaku)<br>większe lub równe (liczby bez znaku)<br>
+nie wystąpiło przeniesienie</td>
+</tr>
+<tr>
+<td>JE<br>JZ</td>
+<td>ZF = 1</td>
+<td>równe<br>wynik równy zeru</td>
+</tr>
+<tr>
+<td>JNE<br>JNZ</td>
+<td>ZF = 0</td>
+<td>nie równe<br>wynik różny od zera</td>
+</tr>
+<tr>
+<td>JBE<br>JNA</td>
+<td>(CF or ZF) = 1</td>
+<td>mniejsze lub równe (liczby bez znaku)<br>nie większe (liczby bez znaku)</td>
+</tr>
+<tr>
+<td>JNBE<br>JA</td>
+<td>(CF or ZF) = 0</td>
+<td>nie mniejsze i nie równe (liczby bez znaku)<br>większe (liczby bez znaku)</td>
+</tr>
+<tr>
+<td>JS</td>
+<td>SF = 1</td>
+<td>wynik ujemny (liczby ze znakiem)</td>
+</tr>
+<tr>
+<td>JNS</td>
+<td>SF = 0</td>
+<td>wynik nieujemny (liczby ze znakiem)</td>
+</tr>
+<tr>
+<td>JP<br>JPE</td>
+<td>PF = 1</td>
+<td>parzysta liczba jedynek w bajcie</td>
+</tr>
+<tr>
+<td>JNP<br>JPO</td>
+<td>PF = 0</td>
+<td>nieparzysta liczba jedynek w bajcie</td>
+</tr>
+<tr>
+<td>JL<br>JNGE</td>
+<td>(SF xor OF) = 1</td>
+<td>mniejsze (liczby ze znakiem)<br>nie większe i nie równe (liczby ze znakiem)</td>
+</tr>
+<tr>
+<td>JNL<br>JGE</td>
+<td>(SF xor OF) = 0</td>
+<td>nie mniejsze (liczby ze znakiem)<br>większe lub równe (liczby ze znakiem)</td>
+</tr>
+<tr>
+<td>JLE<br>JNG</td>
+<td>((SF xor OF) or ZF) = 1</td>
+<td>mniejsze lub równe (liczby ze znakiem)<br>nie większe (liczby ze znakiem)</td>
+</tr>
+<tr>
+<td>JNLE<br>JG</td>
+<td>((SF xor OF) or ZF) = 0</td>
+<td>nie mniejsze i nie równe (liczby ze znakiem)<br>większe (liczby ze znakiem)</td>
+</tr>
+<tr>
+<td>JRCXZ</td>
+<td>RCX = 0</td>
+<td>rejestr RCX zawiera zero</td>
+</tr>
+<tr>
+<td>LOOP</td>
+<td>RCX ≠ 0</td>
+<td>rejestr RCX nie zawiera zera</td>
+</tr>
+<tr>
+<td>LOOPE<br>LOOPZ</td>
+<td>RCX ≠ 0 and ZF = 1</td>
+<td>rejestr RCX nie zawiera zera i znacznik zera ustawiony</td>
+</tr>
+<tr>
+<td>LOOPNE<br>LOOPNZ</td>
+<td>RCX ≠ 0 and ZF = 0</td>
+<td>rejestr RCX nie zawiera zera i znacznik zera wyzerowany</td>
+</tr>
+</table>
+&nbsp;
+
+</div>
+</body>
+</html>

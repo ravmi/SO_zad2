@@ -1,0 +1,29 @@
+instrukcja z lokciem wydluza dzialanie
+
+mutex generalnei ten systemowy zadziala zawsze, ale jest wolniejszy
+spinlock na jednum procku watku sie zawiesei
+
+Uzwamy spinlocka, jesli i tak by sie krecil na czyms innym
+
+uzywaine xadda
+
+czekanie bez instrukcji lock
+czekamy, az wartosc semafora jest wystarczajaco duza, zeby wejsc
+
+oprocz semaforow jest bardzo wazne, zeby przestrzegac w ktorych rejestrach sa argumenty, ktorych rejestrow nie mozna modyfikowaci jak wywolujemy funkcje z c, to musi byc wyrownany wierzcholek stosu. (stos musi byc wielokrotnoscia 16)
+
+W skrocie z 1-2 - tych nie wolno ruszac
+
+W 1 nie trzeba tego zachowywac, bo nie wywolujemy zadnych z funkcji z c
+
+
+krotki kod, ale bardzo ostroznie trzeba pisac
+  gdzie jest wartosc 32, gdzie 64 bitowa
+
+
+procesor nie lubi:
+case, if, funkcje wirtualne (nie wie gdzie skakac)
+radzi sobie zgadujac, czasami cofa kod
+
+
+ataki na intela(wykonywal w przod)

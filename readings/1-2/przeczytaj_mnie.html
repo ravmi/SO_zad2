@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <title>Systemy operacyjne, laboratorium 1 i 2, asembler</title>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+</head>
+<body>
+<div class="container">
+
+<p>Celem dzisiejszych i przyszłotygodniowych zajęć jest pokazanie, jak napisać w
+asemblerze funkcję, którą można wywołać z języka C, jak z asemblera wywołać
+funkcję napisaną w C, jak z asemblera wywołać funkcję systemową, co pozwala
+napisać cały program w asemblerze, oraz jak do programu w C wstawić fragment w
+asemblerze. Sposób wołania funkcji i przekazywania im argumentów jest
+ustandaryzowany i nazywa się binarnym interfejsem aplikacji (ang. <i>Application
+Binary Interface</i>). Na tych zajęciach poznamy nieco ABI dla 64-bitowego
+Linuksa na architekturze x86-64. W innych systemach operacyjnych i innych
+architekturach obowiązują inne konwencje.</p>
+
+<h1>1. Wołanie funkcji w C</h1>
+
+<h2>1.1. Proste przykłady</h2>
+
+<p>Zacznijmy od prostego przykładu. Utwórzmy plik <code>square.c</code>, w
+którym zaimplementujmy w C funkcję obliczającą kwadrat 32-bitowej liczby ze
+znakiem, zwracającą 64-bitowy wynik.</p>
+<pre>
+#include &lt;stdint.h>
+
+int64_t ssquare_s(int32_t x) {
+  return (int64_t)x * (int64_t)x;
+}
+</pre>
+<p>Skompilujmy ten plik poleceniem:</p>
+<pre>
+gcc -c -Wall -O2 square.c -o square.o
+</pre>
+
+<p>Zwracamy szczególną uwagę, aby włączyć optymalizację, np. opcją
+<code>-O2</code>. GCC z wyłączoną optymalizacją generuje paskudny kod i wbrew
+oczekiwaniu bardzo trudny do zrozumienia. Obejrzyjmy wynik działania kompilatora
+poleceniem:</p>
+<pre>
+objdump -d -M intel_mnemonic square.o
+</pre>
+<p>Interesuje nas sekcja <code>.text</code>, która zawiera kod wykonywalny.</p>
+<pre>
+Disassembly of section .text:
+
+0000000000000000 &lt;ssquare>:
+   0:   48 63 c7                movsxd rax,edi
+   3:   48 0f af c0             imul   rax,rax
+   7:   c3                      ret
+</pre>
+
+<p>Na wydruku widzimy wygenerowany kod maszynowy i jego tłumaczenie na asembler.
+Przeanalizujmy ten kod. Argument <code>x</code> przekazywany jest funkcji
+<code>square</code> przez wartość w 32-bitowym rejestrze <code>edi</code>.
+Instrukcja <code>movsxd</code> rozszerza tę wartość ze znakiem do wartości
+64-bitowej (rzutuje wartość typu <code>in32_t</code> na wartość typu
+<code>int64_t</code>), która zostaje zapisana w rejestrze <code>rax</code>.
+Instrukcja <code>imul</code> mnoży zawartość rejestru <code>rax</code> przez
+siebie i umieszcza wynik w tym rejestrze. Instrukcja <code>ret</code> wykonuje
+powrót. Wynik działania funkcji <code>square</code> przekazywany jest do funkcji
+ją wołającej w rejestrze <code>rax</code>.</p>
+
+<p>Jeśli zmienimy deklarację funkcji <code>square</code>, aby działała na
+liczbach bez znaku, to otrzymamy nieco inny kod wynikowy. Niektórych może jednak
+zdziwić, że różnica jest nie taka, jakiej się spodziewali.</p>
+<pre>
+uint64_t usquare(uint32_t x) {
+  return (uint64_t)x * (uint64_t)x;
+}
+</pre>
+<pre>
+Disassembly of section .text:
+
+0000000000000000 &lt;usquare>:
+   0:   89 f8                   mov    eax,edi
+   2:   48 0f af c0             imul   rax,rax
+   6:   c3                      ret
+</pre>
+<p>Jak widać, rzutowanie wartość typu <code>uin32_t</code> na wartość typu
+<code>uint64_t</code> wykonuje trikowo instrukcja <code>mov</code>, ale
+mnożenie wykonuje taka sama instrukcja jak dla liczb ze znakiem.</p>
+
+<div class="panel panel-default">
+<div class="panel-heading">
+<h4 class="panel-title">Zadanie A1</h4>
+</div>
+<div class="panel-body">
+<p>Zobacz, jak kompilator przetłumaczy na asembler następujące funkcje:</p>
+<pre>
+int64_t sddiv(int64_t x) {
+  return x / 2;
+}
+
+int64_t ssdiv(int64_t x) {
+  return x >> 1;
+}
+
+uint64_t uddiv(uint64_t x) {
+  return x / 2;
+}
+
+uint64_t usdiv(uint64_t x) {
+  return x >> 1;
+}
+
+int64_t smmul(int64_t x) {
+  return x * 2;
+}
+
+int64_t ssmul(int64_t x) {
+  return x &lt;&lt; 1;
+}
+
+uint64_t ummul(uint64_t x) {
+  return x * 2;
+}
+
+uint64_t usmul(uint64_t x) {
+  return x &lt;&lt; 1;
+}
+</pre>
+<p>Wyjaśnij występujące różnice lub ich brak. Dla ciekawskich: jak to będzie, gdy
+zechcemy dzielić lub mnożyć przez inne potęgi dwójki albo małe stałe nie będące
+potęgą dwójki (np. 3, 5, 9)?</p>
+</div>
+</div>
+
+<h2>1.2. Przekazywanie argumentów</h2>
+
+<p>Poeksperymentujmy z funkcją, która ma więcej niż jeden argument. Utwórzmy
+plik <code>abi_test.c</code> zawierający poniższy kod:</p>
+<pre>
+void foo1(long, int, short, signed char, unsigned char, unsigned short, unsigned int, unsigned long);
+
+void bar1() {
+  foo1(1, 2, 3, 4, 5, 6, 7, 8);
+}
+</pre>
+<p>Obejrzyjmy wynik działania poleceń:</p>
+<pre>
+gcc -c -Wall -O2 abi_test.c -o abi_test.o
+objdump -d -M intel_mnemonic abi_test.o
+</pre>
+<p>Pomijając zbędne dla nas informacje, powinniśmy zobaczyć coś takiego:</p>
+<pre>
+bar1:
+  sub    rsp, 0x18
+  mov    r9d, 0x6
+  mov    r8d, 0x5
+  mov    QWORD PTR [rsp + 0x8], 0x8
+  mov    DWORD PTR [rsp], 0x7
+  mov    ecx, 0x4
+  mov    edx, 0x3
+  mov    esi, 0x2
+  mov    edi, 0x1
+  call   foo1
+  add    rsp, 0x18
+  ret
+</pre>
+<p>lub coś takiego:</p>
+<pre>
+bar1:
+  sub    rsp, 0x8
+  mov    r9d, 0x6
+  mov    r8d, 0x5
+  push   0x8
+  push   0x7
+  mov    ecx, 0x4
+  mov    edx, 0x3
+  mov    esi, 0x2
+  mov    edi, 0x1
+  call   foo1
+  add    rsp, 0x18
+  ret
+</pre>
+
+<p>Początkowe sześć argumentów przekazywanych jest kolejno w rejestrach
+<code>rdi</code>, <code>rsi</code>, <code>rdx</code>, <code>rcx</code>,
+<code>r8</code> i <code>r9</code>. Zauważmy, że dla oszczędności pamięci
+programu kompilator wygenerował operacje na ich 32-bitowych młodszych połówkach.
+Korzysta się tu z dość dziwnej konwencji architektury x86-64: operacje na
+32-bitowych młodszych połówkach 64-bitowych rejestrów zerują ich starsze
+32-bitowe połówki. Podobne zachowanie nie ma miejsca przy operacjach na
+młodszych 16-bitowych ćwiartkach i 8-bitowych ósemkach tych rejestrów. Kolejne
+argumenty przekazywane są przez stos – odkładane są na stosie od prawej do
+lewej, a stos czyści funkcja wołająca. Taka konwencja umożliwia łatwą
+implementację funkcji o zmiennej liczbie argumentów. Zauważmy też, że kompilator
+jakby zgubił informację o typach argumentów.</p>
+
+<p>A dlaczego wskaźnik stosu został przesunięty o 24 bajty, czyli o dodatkowe 8
+bajtów, mimo że potrzebne jest miejsce na dwie ośmiobajtowe stałe (właściwie to
+jedna z nich jest czerobajtowa, ale stos w trybie 64-bitowym działa w porcjach
+po 8 bajtów)? Wyjaśnienie:
+<i>According to the ABI, the stack pointer + 8 should be kept 16 byte aligned
+upon entry to functions. The reason you have to subtract 8 is that call itself
+places 8 bytes of return address on the stack, thereby violating this
+constraint. Basically you have to make sure the total stack pointer movement is
+a multiple of 16, including the return address. Thus the stack pointer needs to
+be moved by multiple of 16 + 8 to leave room for the return address.</i></p>
+
+<p>Zobaczmy jeszcze jeden przykład:</p>
+<pre>
+void foo2(long, long, int, int);
+
+void bar2() {
+  foo2(0x123456789abcdef0, -1, 0x12345678, -1);
+}
+</pre>
+<p>Kompilator wygenerował poniższy kod:</p>
+<pre>
+0000000000000040 &lt;bar2>:
+  40:   b9 ff ff ff ff          mov    ecx,0xffffffff
+  45:   ba 78 56 34 12          mov    edx,0x12345678
+  4a:   48 c7 c6 ff ff ff ff    mov    rsi,0xffffffffffffffff
+  51:   48 bf f0 de bc 9a 78    mov    rdi,0x123456789abcdef0
+  58:   56 34 12
+  5b:   e9 00 00 00 00          jmp    0x0; skok do funkcji foo2
+</pre>
+<p>Widzimy, że jeśli trzeba do rejestru załadować stałą, która nie mieści się w
+32 bitach, to argumentem instrukcji jest rejestr 64-bitowy, ale stała może być
+zakodowana na 64 bitach (8 bajtach) lub 32 bitach (4 bajtach). W tym drugim
+przypadku jest ona rozszerzana do 64 bitów przez powielenie bitu znaku. Widzimy
+też, że kompilator zoptymalizował epilog funkcji i zamiast oczekiwanej sekwencji
+<code>call</code>, <code>ret</code> wstawił instrukcję bezwarunkowego skoku
+<code>jmp</code>.
+Jej argumentem jest liczba w kodzie uzupełnieniowym do dwójki, wskazująca, o ile
+należy zmodyfikować wartość licznika rozkazów (ang. <i>program counter</i>)
+w stosunku do adresu następnej instrukcji.
+Kompilator wstawił wartość 0, gdyż nie zna adresu funkcji <code>foo2</code>.
+Właściwą wartość wstawi linker.</p>
+
+<div class="panel panel-default">
+<div class="panel-heading">
+<h4 class="panel-title">Zadanie A2</h4>
+</div>
+<div class="panel-body">
+<p>Poeksperymentuj z innymi typami argumentów: wskaźniki, struktury, wskaźniki do
+struktur. Szczególnie ciekawscy mogą poeksperymentować z typami
+zmiennoprzecinkowymi.</p>
+</div>
+</div>
+
+<h2>1.3. Wartość funkcji</h2>
+
+<p>Zobaczmy wynik działania kompilatora dla takiego kodu:</p>
+<pre>
+long foo11() {
+  return 0x1;
+}
+</pre>
+<p>Powinniśmy dostać:</p>
+<pre>
+foo11:
+  mov    eax, 0x1
+  ret
+</pre>
+
+<p>Zobaczmy, jak zachowa się kompilator, gdy wartość funkcji nie mieści się w 32
+bitach:</p>
+<pre>
+long foo12() {
+  return 0x123456789abcdef0;
+}
+</pre>
+<p>Powinniśmy oczekiwać następującego wyniku:</p>
+<pre>
+foo12:
+  mov    rax, 0x123456789abcdef0
+  ret
+</pre>
+
+<p>Ciekawe jest obejrzenie wyniku działania kompilatora na poniższym
+przykładzie:</p>
+<pre>
+int foo13() {
+  return 0;
+}
+</pre>
+<p>Powinniśmy zobaczyć efekt działania optymalizatora:</p>
+<pre>
+foo13:
+  xor    eax, eax
+  ret
+</pre>
+
+<div class="panel panel-default">
+<div class="panel-heading">
+<h4 class="panel-title">Zadanie A3</h4>
+</div>
+<div class="panel-body">
+<p>Poeksperymentuj ze zwracaniem wartości innych typów, wskaźników, struktur,
+wskaźników do struktur. Szczególnie ciekawscy mogą poeksperymentować z typami
+zmiennoprzecinkowymi.</p>
+</div>
+</div>
+
+<h2>1.4. Dalsze konwencje</h2>
+
+<p>Funkcja, jeśli chce zmienić wartość któregoś z rejestrów <code>rbx</code>,
+<code>rsp</code>, <code>rbp</code> i <code>r12</code> do <code>r15</code>, musi
+przywrócić ją przed swoim zakończeniem<sup><a href="#bib01">[1]</a></sup>.
+W tym celu wartości rejestrów <code>rbx</code>, <code>rbp</code> i
+<code>r12</code> do <code>r15</code> można zachować na stosie za pomocą
+instrukcji <code>push</code> i przywrócić instrukcją <code>pop</code>.
+Mamy gwarancję, że wartości tych rejestrów nie są zmieniane przez wołane
+funkcje, zatem można w nich (z wyjątkiem <code>rsp</code>) przechowywać lokalne
+zmienne, których wartości muszą pozostać niezmienione po powrocie z wołanej
+funkcji.</p>
+
+<div class="panel panel-default">
+<div class="panel-heading">
+<h4 class="panel-title">Zadanie A4</h4>
+</div>
+<div class="panel-body">
+<p>Zakładając, że 128-bitowe liczby całkowite bez znaku reprezentujemy za pomocą
+struktury</p>
+<pre>
+typedef struct {
+  uint64_t lo;
+  uint64_t hi;
+} uint128_t;
+</pre>
+<p>zaimplementuj w
+asemblerze<sup><a href="#bib02">[2]</a></sup><sup><a href="#bib08">[8]</a></sup>
+funkcję o sygnaturze</p>
+<pre>
+uint128_t mac(uint128_t const *a, uint128_t const *x, uint128_t const *y);
+</pre>
+<p>która oblicza wartość <code>a + x * y</code> modulo 2 do potęgi 128.
+Skorzystaj z 64-bitowych instrukcji <code>add</code>, <code>adc</code>,
+<code>mul</code> i <code>imul</code>. Plik asemblerowy kompiluje się
+poleceniem:</p>
+<pre>
+nasm -f elf64 -o mac.o mac.asm
+</pre>
+<p>a programem testujący w C kompiluje się i całość linkuje się poleceniami:</p>
+<pre>
+gcc -c -Wall -O2 -o mac_test.o mac_test.c
+gcc -o mac_test mac.o mac_test.o
+</pre>
+<p><b>Uwaga:</b> składnia NASM-a jest nieco inna niż ta, którą widzimy po
+deasemblacji programem <code>objdump</code>.</p>
+</div>
+</div>
+
+<div class="alert alert-info">
+<h4>W skrócie</h4>
+Argumenty funkcji przekazuje się w rejestrach <code>rdi</code>,
+<code>rsi</code>, <code>rdx</code>, <code>rcx</code>, <code>r8</code> i
+<code>r9</code>.
+Jeśli jest ich więcej, to kolejne umieszcza się na stosie, a stos czyści funkcja
+wołająca.
+Jeśli funkcja zmieni wartość któregoś z rejestrów <code>rbx</code>,
+<code>rsp</code>, <code>rbp</code> i <code>r12</code> do <code>r15</code>, musi
+przywrócić jego wartość, jaka była przy wchodzeniu do funkcji (tuż po wywołaniu
+instrukcji <code>call</code>).
+Wartość funkcji znajdzie się zwykle w rejestrze <code>rax</code> lub w parze
+rejestrów <code>rax</code> i <code>rdx</code>.
+Przy wchodzeniu do funkcji wartość wskaźnika stosu musi być podzielna przez 16.
+</div>
+
+<h1>2. Instrukcje sterujące</h1>
+
+<p>Instrukcje sterujące zmieniają kolejność wykonywania instrukcji.
+Należą do nich widziane już instrukcje wołania procedury <code>call</code>,
+powrotu z procedury <code>ret</code> i skoku bezwarunkowego <code>jmp</code>.
+Skoki warunkowe (potrzebne m.in. do implementowania pętli) realizuje się zwykle
+dwuetapowo: instrukcja arytmetyczno-logiczna ustawia znaczniki w rejestrze
+<code>rflags</code>, instrukcja skoku warunkowego wykonuje skok zależnie od
+ustawionych znaczników.</p>
+
+<div class="alert alert-info">
+<h4>Ważne</h4>
+Do porównywania liczb bez znaku używa się innych instrukcji skoku niż do
+porównywania liczb ze znakiem.
+</div>
+
+<p>Krótka ściągawka jest w pliku <a href="warunkowe.html">warunkowe.html</a>.</p>
+
+<p>Przeanalizujmy, jak kompilator tłumaczy taki kod:</p>
+<pre>
+void bar(void);
+
+void foo(void) {
+  int i;
+  for (i = 0; i &lt; 100; ++i)
+    bar();
+}
+</pre>
+<p>Powinniśmy zobaczyć coś takiego:</p>
+<pre>
+0000000000000000 &lt;foo>:
+   0:   53                      push   rbx
+   1:   bb 64 00 00 00          mov    ebx,0x64
+   6:   66 2e 0f 1f 84 00 00    nop
+   d:   00 00 00
+  10:   e8 00 00 00 00          call   0x0; skok do funkcji bar
+  15:   83 eb 01                sub    ebx,0x1
+  18:   75 f6                   jne    0xf6; skok o -10 bajtów, czyli do adresu 0x10
+  1a:   5b                      pop    rbx
+  1b:   c3                      ret
+</pre>
+<p>Zauważmy, że zmienna <code>i</code> jest przechowywana w rejestrze
+<code>ebx</code> i nie zwiększa się od 0 do 100, jak to napisaliśmy w C, a
+zmniejsza się od 100 do 0.
+Jeśli wymusimy, aby wartość <code>i</code> nie była zoptymalizowana:</p>
+<pre>
+void bar(int);
+
+void foo(void) {
+  int i;
+  for (i = 0; i &lt; 100; ++i)
+    bar(i);
+}
+</pre>
+<p>to powinniśmy zobaczyć coś takiego:</p>
+<pre>
+0000000000000000 &lt;foo>:
+   0:   53                      push   rbx
+   1:   31 db                   xor    ebx,ebx
+   3:   0f 1f 44 00 00          nop
+   8:   89 df                   mov    edi,ebx
+   a:   83 c3 01                add    ebx,0x1
+   d:   e8 00 00 00 00          call   0x0; skok do funkcji bar
+  12:   83 fb 64                cmp    ebx,0x64
+  15:   75 f1                   jne    0xf1; skok o -15 bajtów, czyli do adresu 0x8
+  17:   5b                      pop    rbx
+  18:   c3                      ret
+</pre>
+<p>Zauważmy, że instrukcje <code>cmp</code> i <code>jne</code> sprawdzają,
+czy wartość jest nierówna 100, a nie czy jest mniejsza od 100, jak to
+napisaliśmy w C.</p>
+
+<div class="panel panel-default">
+<div class="panel-heading">
+<h4 class="panel-title">Zadanie A5</h4>
+</div>
+<div class="panel-body">
+<p>Co w powyższym kodzie robi instrukcja <code>xor</code>?
+Po co w powyższych kodach jest instrukcja <code>nop</code>?
+Dlaczego kompilator wybrał do przechowywania zmiennej <code>i</code> rejestr
+<code>ebx</code>, a nie np. rejestr <code>r10d</code>, którego wartości nie
+musiałby zachowywać na stosie (zaoszczędziłby dwie instrukcje)?
+Dlaczego przed wywołaniem funkcji <code>bar</code> wartość rejestru
+<code>ebx</code> jest przepisywana do rejestru <code>edi</code>?</p>
+</div>
+</div>
+
+<p>Argumentem instrukcji skoku warunkowego jest liczba w kodzie uzupełnieniowym
+do dwójki, wskazująca, o ile w przypadku wykonywania skoku należy zmodyfikować
+wartość licznika rozkazów (ang. <i>program counter</i>) w stosunku do adresu
+następnej instrukcji.
+Programując w NASM-ie, nie musimy sami wyliczać tych wartości.
+Można używać symbolicznych etykiet.
+Funkcję
+</p>
+<pre>
+void foo(void) {
+  bar1();
+  for (;;)
+    if (bar2() &lt; 0)
+      return;
+}
+</pre>
+<p>moglibyśmy w asemblerze zaimplementować tak:</p>
+<pre>
+foo:
+  call   bar1
+foo_loop:
+  call   bar2
+  test   rax, rax
+  js     foo_exit
+  jmp    foo_loop
+foo_exit:
+  ret
+</pre>
+
+<h1>3. Wołanie funkcji systemowych</h1>
+
+<p>Funkcje systemowe<sup><a href="#bib03">[3]</a></sup> woła się za pomocą
+instrukcji <code>syscall</code>. Jej argumenty (maksymalnie sześć ) umieszcza
+się kolejno w rejestrach <code>rdi</code>, <code>rsi</code>, <code>rdx</code>,
+<code>r10</code>, <code>r8</code> i <code>r9</code>. Wynik działania zwracany
+jest w rejestrze <code>rax</code>. Wartość ujemna z zakresu &minus;4095 do
+&minus;1 sygnalizuje błąd i jest to zanegowana wartość <code>errno</code>.
+Funkcje systemowe nie zachowują wartości rejestrów <code>rcx</code> i
+<code>r11</code>.
+Wykonywanie programu napisanego w asemblerze zaczyna się od etykiety
+<code>_start</code>, która musi być zadeklarowana jako <code>global</code>,
+a kończy wywołaniem funkcji <code>sys_exit</code>.
+Wypisać coś na ekran można funkcją <code>sys_write</code>.
+Kod wykonywalny umieszcza się w sekcji <code>.text</code>,
+zmienne globalne – w sekcji <code>.data</code>,
+zmienne globalne inicjowane zerami – w sekcji <code>.bss</code>,
+a zmienne globalne tylko do odczytu – w sekcji <code>.rodata</code>.
+Potrzebne stałe definiuje się za pomocą dyrektywy
+<code>equ</code><sup><a href="#bib02">[2]</a></sup>.</p>
+
+<div class="panel panel-default">
+<div class="panel-heading">
+<h4 class="panel-title">Zadanie A6</h4>
+</div>
+<div class="panel-body">
+<p>Napisz w asemblerze program „hello world”.
+Jeśli program umieścimy w pliku <code>hello_world.asm</code>, to kompilujemy go
+poleceniami:</p>
+<pre>
+nasm -f elf64 -o hello_world.o hello_world.asm
+ld -o hello_world hello_world.o
+</pre>
+</div>
+</div>
+
+<div class="panel panel-default">
+<div class="panel-heading">
+<h4 class="panel-title">Zadanie A7</h4>
+</div>
+<div class="panel-body">
+<p>Rozbuduj program „hello world”, aby wypisywał argumenty, które zostały mu
+podane w linii poleceń<sup><a href="#bib01">[1, rys. 3.11]</a></sup>. Do
+znalezienia długości napisu użyj instrukcji <code>repne scasb</code>.</p>
+</div>
+</div>
+
+<h1>4. Wstawki asemblerowe</h1>
+
+<p>Czasem potrzebujemy użyć w programie napisanym w C lub C++ instrukcji
+asemblera realizującej operację, której nie ma w tych językach. Napisanie
+funkcji w asemblerze może być nieefektywne – dochodzi narzut związany z wołaniem
+funkcji i powrotem z niej. Jeśli operację można zrealizować jedną instrukcją, to
+narzut ten będzie duży. GCC dostarcza wiele funkcji
+wbudowanych<sup><a href="#bib06">[6]</a></sup><sup><a href="#bib07">[7]</a></sup>,
+które rozwijają się do wywołań asemblera. GCC pozwala też pisać wstawki (makra)
+asemblerowe<sup><a href="#bib04">[4]</a></sup>. We wstawkach i makrach
+asemblerowych używana jest składnia AT&amp;T<sup><a href="#bib05">[5]</a></sup>.</p>
+
+<p>Przyjrzyjmy się dwóm przykładom.
+Makro <code>add128</code> dodaje do 128-bitowej liczby bez znaku
+reprezentowanej przez dwie 64-bitowe wartości <code>out_lo</code>,
+<code>out_hi</code> drugą 128-bitową liczbę bez znaku reprezentowaną przez dwie
+64-bitowe wartości <code>in_lo</code>, <code>in_hi</code>.
+Argumentami makra, z pewnymi ograniczeniami, mogą być wyrażenia.</p>
+<pre>
+#define add128(out_lo, out_hi, in_lo, in_hi) ({                 \
+  asm ("addq %[_in_lo], %[_out_lo]\n\t"                         \
+       "adcq %[_in_hi], %[_out_hi]"                             \
+        : [_out_lo] "+r" (out_lo), [_out_hi] "+r" (out_hi)      \
+        : [_in_lo]  "rm" (in_lo),  [_in_hi]  "rm" (in_hi)       \
+        : "cc");                                                \
+})
+</pre>
+
+<p>Makro <code>mul128</code> mnoży dwie 64-bitowe liczby bez znaku
+<code>in_x</code>, <code>in_y</code> i produkuje 128-bitowy wynik. Młodsze 64
+bity umieszcza w <code>out_lo</code>, a starsze – w <code>out_hi</code>.
+Argumentami makra, z pewnymi ograniczeniami, mogą być wyrażenia.</p>
+<pre>
+#define mul128(out_lo, out_hi, in_x, in_y) ({   \
+  asm ("mulq %3"                                \
+        : "=a" (out_lo), "=d" (out_hi)          \
+        : "0"  (in_x),   "rm" (in_y)            \
+        : "cc");                                \
+})
+</pre>
+
+<div class="panel panel-default">
+<div class="panel-heading">
+<h4 class="panel-title">Zadanie A8</h4>
+</div>
+<div class="panel-body">
+<p>Rozwiąż zadanie 4, implementując funkcję <code>mac</code> w C i korzystając z
+makr asemblerowych. Porównaj wygenerowany przez kompilator kod wynikowy z tym,
+który napisałeś w zadaniu A4.</p>
+</div>
+</div>
+
+<h1>5. Do poczytania</h1>
+
+<ol>
+<li id="bib01"><a href="https://software.intel.com/sites/default/files/article/402129/mpx-linux64-abi.pdf">Opis ABI dla 64-bitowego Linuksa</a></li>
+<li id="bib02"><a href="http://www.nasm.us/doc">Podręcznik NASM-a</a></li>
+<li id="bib03"><a href="http://blog.rchapman.org/posts/Linux_System_Call_Table_for_x86_64">Wywołania systemowe w 64-bitowym Linuksie</a></li>
+<li id="bib04"><a href="https://gcc.gnu.org/onlinedocs/gcc/Using-Assembly-Language-with-C.html#Using-Assembly-Language-with-C">Wstawki asemblerowe</a></li>
+<li id="bib05"><a href="http://students.mimuw.edu.pl/SO/Projekt03-04/temat2-g3/asmintel/prezentacja.html">Asembler x86</a></li>
+<li id="bib06"><a href="https://gcc.gnu.org/onlinedocs/gcc/x86-Built-in-Functions.html">Specyficzne dla architektury x86 funkcje wbudowane</a></li>
+<li id="bib07"><a href="https://gcc.gnu.org/onlinedocs/gcc/Other-Builtins.html">Pozostałe funkcje wbudowane</a></li>
+<li id="bib08"><a href="http://students.mimuw.edu.pl/~zbyszek/asm/pl/index.html">Strona wykładu programowanie w asemblerze</a></li>
+</ol>
+
+</div>
+</body>
+</html>
