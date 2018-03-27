@@ -9,11 +9,11 @@ section .text
 proberen:
     ; rdi is first argument (pointer to semaphore)
     ; esi is second arguement (value)
+
+spin:
     mov r11d, esi
     ; r11d := -value
     neg r11d
-
-spin:
     cmp [rdi], esi
     jge try_pass    ; semaphore value >= value, we can try to pass
     jmp spin        ; otherwise busy wait
@@ -43,12 +43,18 @@ verhogen:
     ret
 
 proberen_time:
+    sub rsp, 8          ; place for first get_os_time return value
+    push rdi            ; save arguments before calling get_os_time
+    push rsi
     ; rdi is first argument (pointer to semaphore)
     ; esi is second arguement (value)
     ; both go to proberen unchanged
     call get_os_time    ; return value(time) is in rax now
-    mov r11, rax        ; hold previous time in r11
+    mov [rsp + 16], rax ; hold previous time on stack
+    pop rsi             ; taking rsi and rdi back
+    pop rdi
     call proberen
     call get_os_time    ; new time again in rax
-    sub rax, r11        ; time difference in rax, it's function return value
+    sub rax, [rsp]
+    add rsp, 8          ; fixing the stack
     ret
